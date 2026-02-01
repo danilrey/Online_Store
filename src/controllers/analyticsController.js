@@ -3,6 +3,24 @@ const Order = require('../models/Order');
 const Review = require('../models/Review');
 const User = require('../models/User');
 const mongoose = require('mongoose');
+const { sendError, sendSuccess } = require('./responseUtils');
+
+//build match stage with date range and order status filter
+const buildDateRangeMatchStage = (startDate, endDate, excludeCancelled = true) => {
+  const matchStage = {};
+
+  if (excludeCancelled) {
+    matchStage.order_status = { $nin: ['cancelled'] };
+  }
+
+  if (startDate || endDate) {
+    matchStage.createdAt = {};
+    if (startDate) matchStage.createdAt.$gte = new Date(startDate);
+    if (endDate) matchStage.createdAt.$lte = new Date(endDate);
+  }
+
+  return matchStage;
+};
 
 //desc - get product statistics with aggregation
 //route - get /api/analytics/products/stats
@@ -28,16 +46,9 @@ exports.getProductStats = async (req, res) => {
       }
     ]);
 
-    res.status(200).json({
-      success: true,
-      data: stats
-    });
+    return sendSuccess(res, stats);
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching product statistics',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching product statistics', error);
   }
 };
 
@@ -81,17 +92,9 @@ exports.getTopRatedProducts = async (req, res) => {
       }
     ]);
 
-    res.status(200).json({
-      success: true,
-      count: topProducts.length,
-      data: topProducts
-    });
+    return sendSuccess(res, topProducts, null, { count: topProducts.length });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching top-rated products',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching top-rated products', error);
   }
 };
 
@@ -102,15 +105,7 @@ exports.getSalesAnalytics = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    const matchStage = {
-      order_status: { $nin: ['cancelled'] }
-    };
-
-    if (startDate || endDate) {
-      matchStage.createdAt = {};
-      if (startDate) matchStage.createdAt.$gte = new Date(startDate);
-      if (endDate) matchStage.createdAt.$lte = new Date(endDate);
-    }
+    const matchStage = buildDateRangeMatchStage(startDate, endDate);
 
     const salesData = await Order.aggregate([
       {
@@ -186,19 +181,12 @@ exports.getSalesAnalytics = async (req, res) => {
       }
     ]);
 
-    res.status(200).json({
-      success: true,
-      data: {
-        summary: summary[0] || {},
-        topProducts: salesData
-      }
+    return sendSuccess(res, {
+      summary: summary[0] || {},
+      topProducts: salesData
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching sales analytics',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching sales analytics', error);
   }
 };
 
@@ -209,15 +197,7 @@ exports.getSalesTimeSeries = async (req, res) => {
   try {
     const { startDate, endDate, interval = 'day' } = req.query;
 
-    const matchStage = {
-      order_status: { $nin: ['cancelled'] }
-    };
-
-    if (startDate || endDate) {
-      matchStage.createdAt = {};
-      if (startDate) matchStage.createdAt.$gte = new Date(startDate);
-      if (endDate) matchStage.createdAt.$lte = new Date(endDate);
-    }
+    const matchStage = buildDateRangeMatchStage(startDate, endDate);
 
     const format = interval === 'month' ? '%Y-%m' : '%Y-%m-%d';
 
@@ -241,16 +221,9 @@ exports.getSalesTimeSeries = async (req, res) => {
       }
     ]);
 
-    res.status(200).json({
-      success: true,
-      data: series
-    });
+    return sendSuccess(res, series);
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching sales time series',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching sales time series', error);
   }
 };
 
@@ -269,16 +242,9 @@ exports.getOrderStatusStats = async (req, res) => {
       { $sort: { count: -1 } }
     ]);
 
-    res.status(200).json({
-      success: true,
-      data: stats
-    });
+    return sendSuccess(res, stats);
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching order status statistics',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching order status statistics', error);
   }
 };
 
@@ -290,18 +256,12 @@ exports.getUserOrderHistory = async (req, res) => {
     const { userId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user id'
-      });
+      return sendError(res, 400, 'Invalid user id');
     }
 
     //check authorization
     if (req.user._id.toString() !== userId && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized'
-      });
+      return sendError(res, 403, 'Not authorized');
     }
 
     const orderHistory = await Order.aggregate([
@@ -370,19 +330,12 @@ exports.getUserOrderHistory = async (req, res) => {
       }
     ]);
 
-    res.status(200).json({
-      success: true,
-      data: {
-        statistics: userStats[0] || {},
-        orders: orderHistory
-      }
+    return sendSuccess(res, {
+      statistics: userStats[0] || {},
+      orders: orderHistory
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching user order history',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching user order history', error);
   }
 };
 
@@ -405,23 +358,14 @@ exports.getReviewStats = async (req, res) => {
 
     const totalReviews = stats.reduce((sum, stat) => sum + stat.count, 0);
     const averageRating = stats.reduce(
-      (sum, stat) => sum + (stat._id * stat.count),
-      0
-    ) / totalReviews || 0;
+      (sum, stat) => sum + (stat._id * stat.count), 0) / totalReviews || 0;
 
-    res.status(200).json({
-      success: true,
-      data: {
-        totalReviews,
-        averageRating: Math.round(averageRating * 10) / 10,
-        distribution: stats
-      }
+    return sendSuccess(res, {
+      totalReviews,
+      averageRating: Math.round(averageRating * 10) / 10,
+      distribution: stats
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching review statistics',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching review statistics', error);
   }
 };

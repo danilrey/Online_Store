@@ -1,4 +1,5 @@
 const Product = require('../models/Product');
+const { sendError, sendSuccess, getPagination, buildPaginationMeta, handleValidationError } = require('./responseUtils');
 
 //desc - get all products with filtering, sorting, pagination
 //route - get /api/products
@@ -38,28 +39,17 @@ exports.getProducts = async (req, res) => {
     }
 
     //execute a query with pagination
-    const skip = (page - 1) * limit;
+    const { page: pageNum, limit: limitNum, skip } = getPagination(page, limit);
     const products = await Product.find(query)
       .sort(sort)
-      .limit(Number(limit))
+      .limit(limitNum)
       .skip(skip);
 
     const total = await Product.countDocuments(query);
 
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      total,
-      pages: Math.ceil(total / limit),
-      currentPage: Number(page),
-      data: products
-    });
+    return sendSuccess(res, products, null, buildPaginationMeta(products, total, pageNum, limitNum));
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching products',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching products', error);
   }
 };
 
@@ -71,22 +61,12 @@ exports.getProduct = async (req, res) => {
     const product = await Product.findById(req.params.id);
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return sendError(res, 404, 'Product not found');
     }
 
-    res.status(200).json({
-      success: true,
-      data: product
-    });
+    return sendSuccess(res, product);
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching product',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching product', error);
   }
 };
 
@@ -97,17 +77,9 @@ exports.createProduct = async (req, res) => {
   try {
     const product = await Product.create(req.body);
 
-    res.status(201).json({
-      success: true,
-      message: 'Product created successfully',
-      data: product
-    });
+    return sendSuccess(res, product, 'Product created successfully', null, 201);
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error creating product',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error creating product');
   }
 };
 
@@ -126,23 +98,12 @@ exports.updateProduct = async (req, res) => {
     );
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return sendError(res, 404, 'Product not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Product updated successfully',
-      data: product
-    });
+    return sendSuccess(res, product, 'Product updated successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error updating product',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error updating product');
   }
 };
 
@@ -154,10 +115,7 @@ exports.updateStock = async (req, res) => {
     const { quantity } = req.body;
 
     if (!quantity || quantity === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Quantity is required and cannot be zero'
-      });
+      return sendError(res, 400, 'Quantity is required and cannot be zero');
     }
 
     //use $inc to increment or decrement stock
@@ -168,23 +126,12 @@ exports.updateStock = async (req, res) => {
     );
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return sendError(res, 404, 'Product not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Stock updated successfully',
-      data: product
-    });
+    return sendSuccess(res, product, 'Stock updated successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error updating stock',
-      error: error.message
-    });
+    return sendError(res, 400, 'Error updating stock', error);
   }
 };
 
@@ -196,10 +143,7 @@ exports.addTag = async (req, res) => {
     const { tag } = req.body;
 
     if (!tag) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tag is required'
-      });
+      return sendError(res, 400, 'Tag is required');
     }
 
     //use $push to add a tag
@@ -210,23 +154,12 @@ exports.addTag = async (req, res) => {
     );
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return sendError(res, 404, 'Product not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Tag added successfully',
-      data: product
-    });
+    return sendSuccess(res, product, 'Tag added successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error adding tag',
-      error: error.message
-    });
+    return sendError(res, 400, 'Error adding tag', error);
   }
 };
 
@@ -245,23 +178,12 @@ exports.removeTag = async (req, res) => {
     );
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return sendError(res, 404, 'Product not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Tag removed successfully',
-      data: product
-    });
+    return sendSuccess(res, product, 'Tag removed successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error removing tag',
-      error: error.message
-    });
+    return sendError(res, 400, 'Error removing tag', error);
   }
 };
 
@@ -273,22 +195,11 @@ exports.deleteProduct = async (req, res) => {
     const product = await Product.findByIdAndDelete(req.params.id);
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return sendError(res, 404, 'Product not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Product deleted successfully',
-      data: {}
-    });
+    return sendSuccess(res, {}, 'Product deleted successfully');
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting product',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error deleting product', error);
   }
 };

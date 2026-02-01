@@ -1,12 +1,9 @@
 const mongoose = require('mongoose');
+const { generateOrderNumber, constraints, createRef } = require('./modelUtils');
 
 //embedded order item schema
 const orderItemSchema = new mongoose.Schema({
-  product: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product',
-    required: true
-  },
+  product: createRef('Product'),
   //snapshot of product details at time of order
   product_snapshot: {
     name: String,
@@ -31,11 +28,7 @@ const orderItemSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema({
   //referenced user
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'User is required']
-  },
+  user: createRef('User'),
   order_number: {
     type: String,
     unique: true,
@@ -79,7 +72,7 @@ const orderSchema = new mongoose.Schema({
   },
   notes: {
     type: String,
-    maxlength: 500
+    maxlength: [constraints.maxNotes, `Notes cannot exceed ${constraints.maxNotes} characters`]
   }
 }, {
   timestamps: true
@@ -93,11 +86,7 @@ orderSchema.index({ created_at: -1 });
 //generate order number before saving
 orderSchema.pre('validate', async function(next) {
   if (!this.order_number) {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    this.order_number = `ORD${year}${month}${random}`;
+    this.order_number = generateOrderNumber();
   }
   next();
 });

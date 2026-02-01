@@ -222,7 +222,7 @@ async function loadAdminOrders() {
         const orders = result.data || [];
 
         if (!orders.length) {
-            container.innerHTML = '<p class="empty-state">No orders yet</p>';
+            setListMessage(container, 'No orders yet');
             return;
         }
 
@@ -242,7 +242,7 @@ async function loadAdminOrders() {
         `).join('');
     } catch (error) {
         console.error('Error loading orders:', error);
-        container.innerHTML = '<p class="alert alert-error">Error loading orders</p>';
+        setListMessage(container, 'Error loading orders', true);
     }
 }
 
@@ -284,7 +284,7 @@ async function loadAdminProducts() {
         const products = result.data || [];
 
         if (!products.length) {
-            container.innerHTML = '<p class="empty-state">No products found</p>';
+            setListMessage(container, 'No products found');
             return;
         }
 
@@ -361,7 +361,7 @@ async function loadAdminProducts() {
         `).join('');
     } catch (error) {
         console.error('Error loading products:', error);
-        container.innerHTML = '<p class="alert alert-error">Error loading products</p>';
+        setListMessage(container, 'Error loading products', true);
     }
 }
 
@@ -406,37 +406,20 @@ async function handleProductAction(event) {
         return;
     }
 
-    let compatibleModels = [];
-    if (modelsRaw?.trim()) {
-        try {
-            compatibleModels = JSON.parse(modelsRaw);
-            if (!Array.isArray(compatibleModels)) {
-                throw new Error('Models must be an array');
-            }
-        } catch (error) {
-            showAlert('Compatible models must be valid JSON array', 'error');
-            return;
-        }
+    const payloadResult = buildProductPayload({
+        name, price, category,
+        stock, brand, material,
+        color, description, tagsRaw,
+        imagesRaw, modelsRaw, isActive
+    });
+
+    if (!payloadResult.ok) {
+        showAlert(payloadResult.error, 'error');
+        return;
     }
 
-    const tags = tagsRaw ? tagsRaw.split(',').map(tag => tag.trim()).filter(Boolean) : [];
-    const images = imagesRaw ? imagesRaw.split(',').map(url => url.trim()).filter(Boolean) : [];
-
     try {
-        await api.updateProduct(productId, {
-            name,
-            price,
-            category,
-            stock,
-            brand: brand || undefined,
-            material: material || undefined,
-            color: color || undefined,
-            description,
-            tags,
-            images,
-            compatible_models: compatibleModels,
-            is_active: isActive
-        }, authToken);
+        await api.updateProduct(productId, payloadResult.payload, authToken);
         showAlert('Product updated', 'success');
         await loadAdminProducts();
     } catch (error) {
@@ -466,45 +449,71 @@ async function handleCreateProduct(event) {
         return;
     }
 
-    let compatibleModels = [];
-    if (modelsRaw?.trim()) {
-        try {
-            compatibleModels = JSON.parse(modelsRaw);
-            if (!Array.isArray(compatibleModels)) {
-                throw new Error('Models must be an array');
-            }
-        } catch (error) {
-            showAlert('Compatible models must be valid JSON array', 'error');
-            return;
-        }
+    const payloadResult = buildProductPayload({
+        name, price, category,
+        stock, brand, material,
+        color, description, tagsRaw,
+        imagesRaw, modelsRaw, isActive
+    });
+
+    if (!payloadResult.ok) {
+        showAlert(payloadResult.error, 'error');
+        return;
     }
 
-    const tags = tagsRaw ? tagsRaw.split(',').map(tag => tag.trim()).filter(Boolean) : [];
-    const images = imagesRaw ? imagesRaw.split(',').map(url => url.trim()).filter(Boolean) : [];
-
-    const payload = {
-        name,
-        price,
-        category,
-        stock,
-        brand: brand || undefined,
-        material: material || undefined,
-        color: color || undefined,
-        description,
-        tags,
-        images,
-        compatible_models: compatibleModels,
-        is_active: isActive
-    };
-
     try {
-        await api.createProduct(payload, authToken);
+        await api.createProduct(payloadResult.payload, authToken);
         showAlert('Product created', 'success');
         event.target.reset();
         await loadAdminProducts();
     } catch (error) {
         console.error('Error creating product:', error);
         showAlert(error.message || 'Error creating product', 'error');
+    }
+}
+
+function buildProductPayload(values) {
+    const modelsResult = parseCompatibleModels(values.modelsRaw);
+    if (!modelsResult.ok) {
+        return { ok: false, error: modelsResult.error };
+    }
+
+    return {
+        ok: true,
+        payload: {
+            name: values.name,
+            price: values.price,
+            category: values.category,
+            stock: values.stock,
+            brand: values.brand || undefined,
+            material: values.material || undefined,
+            color: values.color || undefined,
+            description: values.description,
+            tags: parseCsv(values.tagsRaw),
+            images: parseCsv(values.imagesRaw),
+            compatible_models: modelsResult.value,
+            is_active: values.isActive
+        }
+    };
+}
+
+function parseCsv(value) {
+    return value ? value.split(',').map(item => item.trim()).filter(Boolean) : [];
+}
+
+function parseCompatibleModels(value) {
+    if (!value?.trim()) {
+        return { ok: true, value: [] };
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+        if (!Array.isArray(parsed)) {
+            return { ok: false, error: 'Compatible models must be valid JSON array' };
+        }
+        return { ok: true, value: parsed };
+    } catch (error) {
+        return { ok: false, error: 'Compatible models must be valid JSON array' };
     }
 }
 
@@ -516,3 +525,10 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
+
+function setListMessage(container, message, isError = false) {
+    container.innerHTML = isError
+        ? `<p class="alert alert-error">${message}</p>`
+        : `<p class="empty-state">${message}</p>`;
+}
+

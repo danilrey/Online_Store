@@ -1,18 +1,11 @@
 const mongoose = require('mongoose');
+const { constraints, createRef } = require('./modelUtils');
 
 const reviewSchema = new mongoose.Schema({
   //referenced user
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'User is required']
-  },
+  user: createRef('User'),
   //referenced product
-  product: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product',
-    required: [true, 'Product is required']
-  },
+  product: createRef('Product'),
   rating: {
     type: Number,
     required: [true, 'Rating is required'],
@@ -22,13 +15,13 @@ const reviewSchema = new mongoose.Schema({
   title: {
     type: String,
     trim: true,
-    maxlength: [100, 'Title cannot exceed 100 characters']
+    maxlength: [constraints.maxTitle, `Title cannot exceed ${constraints.maxTitle} characters`]
   },
   comment: {
     type: String,
     required: [true, 'Review comment is required'],
-    minlength: [10, 'Comment must be at least 10 characters'],
-    maxlength: [1000, 'Comment cannot exceed 1000 characters']
+    minlength: [constraints.minDescription, `Comment must be at least ${constraints.minDescription} characters`],
+    maxlength: [constraints.maxComment, `Comment cannot exceed ${constraints.maxComment} characters`]
   },
   verified: {
     type: Boolean,

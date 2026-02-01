@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { validators, constraints, hashPasswordHook, comparePasswordMethod, toPublicJSON, createRef } = require('./modelUtils');
 
 //embedded address schema
 const addressSchema = new mongoose.Schema({
@@ -10,14 +11,12 @@ const addressSchema = new mongoose.Schema({
   is_default: { type: Boolean, default: false }
 }, { _id: true });
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, 'Name is required'],
     trim: true,
-    minlength: [2, 'Name must be at least 2 characters']
+    minlength: [constraints.minName, `Name must be at least ${constraints.minName} characters`]
   },
   email: {
     type: String,
@@ -25,12 +24,12 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    validate: [emailRegex, 'Please provide a valid email']
+    validate: [validators.email.regex, validators.email.message]
   },
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: [4, 'Password must be at least 4 characters'],
+    minlength: [constraints.minPassword, `Password must be at least ${constraints.minPassword} characters`],
     select: false
   },
   role: {
@@ -46,11 +45,7 @@ const userSchema = new mongoose.Schema({
   addresses: [addressSchema],
   //shopping cart (embedded)
   cart: [{
-    product: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Product',
-      required: true
-    },
+    product: createRef('Product'),
     quantity: {
       type: Number,
       required: true,
@@ -79,27 +74,17 @@ userSchema.index({ role: 1, created_at: -1 });
 
 //hash password before saving
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
+  await hashPasswordHook.call(this, next, bcrypt);
 });
 
 //method to compare passwords
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+  return await comparePasswordMethod.call(this, candidatePassword, bcrypt);
 };
 
 //method to get public profile
 userSchema.methods.toPublicJSON = function() {
-  const user = this.toObject();
-  delete user.password;
-  return user;
+  return toPublicJSON.call(this);
 };
 
 module.exports = mongoose.model('User', userSchema);

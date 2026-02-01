@@ -30,6 +30,17 @@ function isValidEmail(email) {
     return emailRegex.test(email);
 }
 
+function buildAuthHeaders(token) {
+    return token ? { 'Authorization': `Bearer ${token}` } : undefined;
+}
+
+function buildJsonHeaders(token) {
+    return {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+}
+
 //api helper functions
 const api = {
     //auth
@@ -46,7 +57,7 @@ const api = {
 
         const response = await fetch(`${API_BASE_URL}/auth/register`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildJsonHeaders(),
             body: JSON.stringify(data)
         });
         return handleResponse(response);
@@ -60,7 +71,7 @@ const api = {
 
         const response = await fetch(`${API_BASE_URL}/auth/login`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildJsonHeaders(),
             body: JSON.stringify(data)
         });
         return handleResponse(response);
@@ -69,7 +80,7 @@ const api = {
     getMe: async (token) => {
         try {
             const response = await fetch(`${API_BASE_URL}/auth/me`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: buildAuthHeaders(token)
             });
             return handleResponse(response);
         } catch (error) {
@@ -85,7 +96,7 @@ const api = {
     getProducts: async (params = {}, token) => {
         const queryString = new URLSearchParams(params).toString();
         const response = await fetch(`${API_BASE_URL}/products?${queryString}`, {
-            headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+            headers: buildAuthHeaders(token)
         });
         return response.json();
     },
@@ -98,10 +109,7 @@ const api = {
     updateProduct: async (id, data, token) => {
         const response = await fetch(`${API_BASE_URL}/products/${id}`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: buildJsonHeaders(token),
             body: JSON.stringify(data)
         });
         return handleResponse(response);
@@ -110,10 +118,7 @@ const api = {
     createProduct: async (data, token) => {
         const response = await fetch(`${API_BASE_URL}/products`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: buildJsonHeaders(token),
             body: JSON.stringify(data)
         });
         return handleResponse(response);
@@ -122,9 +127,7 @@ const api = {
     deleteProduct: async (id, token) => {
         const response = await fetch(`${API_BASE_URL}/products/${id}`, {
             method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+            headers: buildAuthHeaders(token)
         });
         return handleResponse(response);
     },
@@ -138,10 +141,7 @@ const api = {
     createReview: async (data, token) => {
         const response = await fetch(`${API_BASE_URL}/reviews`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: buildJsonHeaders(token),
             body: JSON.stringify(data)
         });
         return response.json();
@@ -151,10 +151,7 @@ const api = {
     addToCart: async (productId, quantity, token) => {
         const response = await fetch(`${API_BASE_URL}/users/cart`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: buildJsonHeaders(token),
             body: JSON.stringify({ productId, quantity })
         });
         return response.json();
@@ -163,7 +160,7 @@ const api = {
     removeFromCart: async (productId, token) => {
         const response = await fetch(`${API_BASE_URL}/users/cart/${productId}`, {
             method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return response.json();
     },
@@ -171,7 +168,7 @@ const api = {
     clearCart: async (token) => {
         const response = await fetch(`${API_BASE_URL}/users/cart`, {
             method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return response.json();
     },
@@ -180,10 +177,7 @@ const api = {
     createOrder: async (data, token) => {
         const response = await fetch(`${API_BASE_URL}/orders`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: buildJsonHeaders(token),
             body: JSON.stringify(data)
         });
         return response.json();
@@ -192,7 +186,7 @@ const api = {
     getAllOrders: async (params, token) => {
         const queryString = new URLSearchParams(params || {}).toString();
         const response = await fetch(`${API_BASE_URL}/orders/all?${queryString}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return handleResponse(response);
     },
@@ -200,10 +194,7 @@ const api = {
     updateOrderStatus: async (orderId, data, token) => {
         const response = await fetch(`${API_BASE_URL}/orders/${orderId}/status`, {
             method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: buildJsonHeaders(token),
             body: JSON.stringify(data)
         });
         return handleResponse(response);
@@ -212,14 +203,14 @@ const api = {
     getMyOrders: async (params, token) => {
         const queryString = new URLSearchParams(params).toString();
         const response = await fetch(`${API_BASE_URL}/orders?${queryString}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return response.json();
     },
 
     getOrder: async (id, token) => {
         const response = await fetch(`${API_BASE_URL}/orders/${id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return response.json();
     },
@@ -233,7 +224,7 @@ const api = {
     getSalesAnalytics: async (token, params = {}) => {
         const queryString = new URLSearchParams(params).toString();
         const response = await fetch(`${API_BASE_URL}/analytics/sales?${queryString}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return handleResponse(response);
     },
@@ -241,28 +232,28 @@ const api = {
     getSalesTimeSeries: async (token, params = {}) => {
         const queryString = new URLSearchParams(params).toString();
         const response = await fetch(`${API_BASE_URL}/analytics/sales/timeseries?${queryString}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return handleResponse(response);
     },
 
     getProductStats: async (token) => {
         const response = await fetch(`${API_BASE_URL}/analytics/products/stats`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return handleResponse(response);
     },
 
     getOrderStatusStats: async (token) => {
         const response = await fetch(`${API_BASE_URL}/analytics/orders/status`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return handleResponse(response);
     },
 
     getUserOrderHistory: async (userId, token) => {
         const response = await fetch(`${API_BASE_URL}/analytics/users/${userId}/orders`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return handleResponse(response);
     },
@@ -270,10 +261,7 @@ const api = {
     addAddress: async (userId, data, token) => {
         const response = await fetch(`${API_BASE_URL}/users/${userId}/addresses`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: buildJsonHeaders(token),
             body: JSON.stringify(data)
         });
         return handleResponse(response);
@@ -282,10 +270,7 @@ const api = {
     updateAddress: async (userId, addressId, data, token) => {
         const response = await fetch(`${API_BASE_URL}/users/${userId}/addresses/${addressId}`, {
             method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: buildJsonHeaders(token),
             body: JSON.stringify(data)
         });
         return handleResponse(response);
@@ -294,7 +279,7 @@ const api = {
     removeAddress: async (userId, addressId, token) => {
         const response = await fetch(`${API_BASE_URL}/users/${userId}/addresses/${addressId}`, {
             method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: buildAuthHeaders(token)
         });
         return handleResponse(response);
     }

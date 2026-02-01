@@ -89,15 +89,15 @@ function handleAddressListClick(event) {
         const [city, country] = cityCountry.split(',').map(item => item.trim());
         const isDefault = !!card.querySelector('.badge');
 
-        document.getElementById('address-id').value = addressId;
-        document.getElementById('address-street').value = street;
-        document.getElementById('address-city').value = city || '';
-        document.getElementById('address-country').value = country || '';
-        document.getElementById('address-phone').value = phone || '';
-        document.getElementById('address-default').checked = isDefault;
-
-        document.getElementById('address-submit').textContent = 'Update Address';
-        document.getElementById('address-cancel').style.display = '';
+        setAddressFormValues({
+            id: addressId,
+            street,
+            city: city || '',
+            country: country || '',
+            phone: phone || '',
+            isDefault,
+            isEditing: true
+        });
         return;
     }
 
@@ -111,9 +111,7 @@ async function handleDeleteAddress(card) {
     if (!addressId) return;
 
     try {
-        const me = await api.getMe(authToken);
-        const userId = me.data?._id;
-
+        const userId = await getCurrentUserId();
         if (!userId) {
             showAlert('User not found', 'error');
             return;
@@ -134,9 +132,7 @@ function resetAddressForm() {
     if (!form) return;
 
     form.reset();
-    document.getElementById('address-id').value = '';
-    document.getElementById('address-submit').textContent = 'Add Address';
-    document.getElementById('address-cancel').style.display = 'none';
+    setAddressFormValues({ isEditing: false });
 }
 
 async function handleAddressSubmit(e) {
@@ -155,9 +151,7 @@ async function handleAddressSubmit(e) {
     }
 
     try {
-        const me = await api.getMe(authToken);
-        const userId = me.data?._id;
-
+        const userId = await getCurrentUserId();
         if (!userId) {
             showAlert('User not found', 'error');
             return;
@@ -199,11 +193,11 @@ async function loadOrders(status = '') {
             const normalizedOrders = result.data.map(normalizeOrder);
             container.innerHTML = normalizedOrders.map(order => createOrderCard(order)).join('');
         } else {
-            container.innerHTML = '<p class="empty-state">No orders found</p>';
+            setOrdersMessage(container, 'No orders found');
         }
     } catch (error) {
         console.error('Error loading orders:', error);
-        container.innerHTML = '<p class="alert alert-error">Error loading orders</p>';
+        setOrdersMessage(container, 'Error loading orders', true);
     }
 }
 
@@ -358,4 +352,26 @@ async function loadUserAnalytics(user, container) {
         console.error('Error loading analytics:', error);
         container.innerHTML = '<p class="alert alert-error">Error loading analytics</p>';
     }
+}
+
+function setAddressFormValues(values) {
+    document.getElementById('address-id').value = values.id || '';
+    document.getElementById('address-street').value = values.street || '';
+    document.getElementById('address-city').value = values.city || '';
+    document.getElementById('address-country').value = values.country || '';
+    document.getElementById('address-phone').value = values.phone || '';
+    document.getElementById('address-default').checked = values.isDefault || false;
+    document.getElementById('address-submit').textContent = values.isEditing ? 'Update Address' : 'Add Address';
+    document.getElementById('address-cancel').style.display = values.isEditing ? '' : 'none';
+}
+
+function setOrdersMessage(container, message, isError = false) {
+    container.innerHTML = isError
+        ? `<p class="alert alert-error">${message}</p>`
+        : `<p class="empty-state">${message}</p>`;
+}
+
+async function getCurrentUserId() {
+    const me = await api.getMe(authToken);
+    return me.data?._id || null;
 }

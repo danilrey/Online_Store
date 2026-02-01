@@ -1,4 +1,23 @@
 const User = require('../models/User');
+const Product = require('../models/Product');
+const { sendError, sendSuccess, handleValidationError } = require('./responseUtils');
+
+//check if user can access resource (owner or admin)
+const canAccessResource = (userId, targetId, userRole) => {
+  return userId.toString() === targetId || userRole === 'admin';
+};
+
+//check if user is resource owner (strict)
+const isResourceOwner = (userId, targetId) => {
+  return userId.toString() === targetId;
+};
+
+//set address as default and unset others
+const setDefaultAddress = (user, targetAddressId) => {
+  user.addresses.forEach(addr => {
+    addr.is_default = addr._id.toString() === targetAddressId;
+  });
+};
 
 //desc - get user profile
 //route - get /api/users/:id
@@ -8,30 +27,17 @@ exports.getUserProfile = async (req, res) => {
     const user = await User.findById(req.params.id).select('-password');
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 404, 'User not found');
     }
 
     //users can only view their own profile unless admin
-    if (req.user._id.toString() !== req.params.id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to view this profile'
-      });
+    if (!canAccessResource(req.user._id, req.params.id, req.user.role)) {
+      return sendError(res, 403, 'Not authorized to view this profile');
     }
 
-    res.status(200).json({
-      success: true,
-      data: user
-    });
+    return sendSuccess(res, user);
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching user profile',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching user profile', error);
   }
 };
 
@@ -41,11 +47,8 @@ exports.getUserProfile = async (req, res) => {
 exports.updateUserProfile = async (req, res) => {
   try {
     //users can only update their own profile
-    if (req.user._id.toString() !== req.params.id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update this profile'
-      });
+    if (!canAccessResource(req.user._id, req.params.id, req.user.role)) {
+      return sendError(res, 403, 'Not authorized to update this profile');
     }
 
     const { name, phone, addresses } = req.body;
@@ -62,23 +65,12 @@ exports.updateUserProfile = async (req, res) => {
     ).select('-password');
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 404, 'User not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Profile updated successfully',
-      data: user
-    });
+    return sendSuccess(res, user, 'Profile updated successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error updating profile',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error updating profile');
   }
 };
 
@@ -87,42 +79,26 @@ exports.updateUserProfile = async (req, res) => {
 //access - private
 exports.addAddress = async (req, res) => {
   try {
-    if (req.user._id.toString() !== req.params.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized'
-      });
+    if (!isResourceOwner(req.user._id, req.params.id)) {
+      return sendError(res, 403, 'Not authorized');
     }
 
     const user = await User.findById(req.params.id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 404, 'User not found');
     }
 
     const address = req.body;
     if (address.is_default) {
-      user.addresses.forEach(addr => {
-        addr.is_default = false;
-      });
+      user.addresses.forEach(addr => addr.is_default = false);
     }
 
     user.addresses.push(address);
     await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Address added successfully',
-      data: user
-    });
+    return sendSuccess(res, user, 'Address added successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error adding address',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error adding address');
   }
 };
 
@@ -131,27 +107,18 @@ exports.addAddress = async (req, res) => {
 //access - private
 exports.updateAddress = async (req, res) => {
   try {
-    if (req.user._id.toString() !== req.params.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized'
-      });
+    if (!isResourceOwner(req.user._id, req.params.id)) {
+      return sendError(res, 403, 'Not authorized');
     }
 
     const user = await User.findById(req.params.id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 404, 'User not found');
     }
 
     const address = user.addresses.id(req.params.addressId);
     if (!address) {
-      return res.status(404).json({
-        success: false,
-        message: 'Address not found'
-      });
+      return sendError(res, 404, 'Address not found');
     }
 
     const { street, city, country, phone, is_default } = req.body;
@@ -161,26 +128,16 @@ exports.updateAddress = async (req, res) => {
     if (phone !== undefined) address.phone = phone;
 
     if (is_default === true) {
-      user.addresses.forEach(addr => {
-        addr.is_default = addr._id.toString() === req.params.addressId;
-      });
+      setDefaultAddress(user, req.params.addressId);
     } else if (is_default === false) {
       address.is_default = false;
     }
 
     await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Address updated successfully',
-      data: user
-    });
+    return sendSuccess(res, user, 'Address updated successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error updating address',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error updating address');
   }
 };
 
@@ -189,11 +146,8 @@ exports.updateAddress = async (req, res) => {
 //access - private
 exports.removeAddress = async (req, res) => {
   try {
-    if (req.user._id.toString() !== req.params.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized'
-      });
+    if (!isResourceOwner(req.user._id, req.params.id)) {
+      return sendError(res, 403, 'Not authorized');
     }
 
     const user = await User.findByIdAndUpdate(
@@ -203,23 +157,12 @@ exports.removeAddress = async (req, res) => {
     ).select('-password');
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 404, 'User not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Address removed successfully',
-      data: user
-    });
+    return sendSuccess(res, user, 'Address removed successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error removing address',
-      error: error.message
-    });
+    return sendError(res, 400, 'Error removing address', error);
   }
 };
 
@@ -230,17 +173,40 @@ exports.addToCart = async (req, res) => {
   try {
     const { productId, quantity = 1 } = req.body;
 
+    //check if product exists and get stock
+    const product = await Product.findById(productId);
+    if (!product) {
+      return sendError(res, 404, 'Product not found');
+    }
+
     //check if product already in cart
     const user = await User.findById(req.user._id);
     const cartItemIndex = user.cart.findIndex(
       item => item.product.toString() === productId
     );
 
+    let currentQuantity = 0;
+    if (cartItemIndex > -1) {
+      currentQuantity = user.cart[cartItemIndex].quantity;
+    }
+
+    //calculate how much we can actually add (limit by stock)
+    const availableToAdd = product.stock - currentQuantity;
+    const actualQuantityToAdd = Math.min(quantity, availableToAdd);
+
+    //if nothing to add, return current cart
+    if (actualQuantityToAdd <= 0) {
+      const updatedUser = await User.findById(req.user._id)
+        .populate('cart.product')
+        .select('-password');
+      return sendSuccess(res, updatedUser.cart, 'Product already at maximum stock in cart');
+    }
+
     if (cartItemIndex > -1) {
       //update quantity using positional operator $
       await User.findOneAndUpdate(
         { _id: req.user._id, 'cart.product': productId },
-        { $inc: { 'cart.$.quantity': quantity } },
+        { $inc: { 'cart.$.quantity': actualQuantityToAdd } },
         { new: true }
       );
     } else {
@@ -251,7 +217,7 @@ exports.addToCart = async (req, res) => {
           $push: {
             cart: {
               product: productId,
-              quantity: quantity
+              quantity: actualQuantityToAdd
             }
           }
         },
@@ -263,17 +229,9 @@ exports.addToCart = async (req, res) => {
       .populate('cart.product')
       .select('-password');
 
-    res.status(200).json({
-      success: true,
-      message: 'Product added to cart',
-      data: updatedUser.cart
-    });
+    return sendSuccess(res, updatedUser.cart, 'Product added to cart');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error adding to cart',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error adding to cart');
   }
 };
 
@@ -289,23 +247,12 @@ exports.removeFromCart = async (req, res) => {
     ).populate('cart.product').select('-password');
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 404, 'User not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Product removed from cart',
-      data: user.cart
-    });
+    return sendSuccess(res, user.cart, 'Product removed from cart');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error removing from cart',
-      error: error.message
-    });
+    return sendError(res, 400, 'Error removing from cart', error);
   }
 };
 
@@ -320,16 +267,8 @@ exports.clearCart = async (req, res) => {
       { new: true }
     ).select('-password');
 
-    res.status(200).json({
-      success: true,
-      message: 'Cart cleared successfully',
-      data: user.cart
-    });
+    return sendSuccess(res, user.cart, 'Cart cleared successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error clearing cart',
-      error: error.message
-    });
+    return sendError(res, 400, 'Error clearing cart', error);
   }
 };

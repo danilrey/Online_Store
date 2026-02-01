@@ -16,11 +16,9 @@ async function loadCart() {
         if (result.success && result.data.cart && result.data.cart.length > 0) {
             cart = result.data.cart;
             renderCart();
-            container.style.display = 'grid';
-            emptyState.style.display = 'none';
+            toggleCartView(container, emptyState, true);
         } else {
-            container.style.display = 'none';
-            emptyState.style.display = 'block';
+            toggleCartView(container, emptyState, false);
         }
     } catch (error) {
         console.error('Error loading cart:', error);
@@ -28,42 +26,17 @@ async function loadCart() {
     }
 }
 
+function toggleCartView(container, emptyState, hasItems) {
+    container.style.display = hasItems ? 'grid' : 'none';
+    emptyState.style.display = hasItems ? 'none' : 'block';
+}
+
 function renderCart() {
     const container = document.getElementById('cart-content');
 
-    const cartItemsHtml = cart.map(item => {
-        const product = item.product;
-        const effectivePrice = product.price;
-        const subtotal = effectivePrice * item.quantity;
-
-        return `
-            <div class="cart-item">
-                <div class="cart-item-image">
-                    ${getProductImage(product)}
-                </div>
-                <div class="cart-item-details">
-                    <h3 class="cart-item-title">${product.name}</h3>
-                    <p class="cart-item-price">${formatPrice(effectivePrice)}</p>
-                    <div class="cart-item-actions">
-                        <div class="quantity-controls">
-                            <button class="quantity-btn" onclick="updateQuantity('${product._id}', ${item.quantity - 1})">-</button>
-                            <span>${item.quantity}</span>
-                            <button class="quantity-btn" onclick="updateQuantity('${product._id}', ${item.quantity + 1})">+</button>
-                        </div>
-                        <button class="btn btn-danger" onclick="removeFromCart('${product._id}')">Remove</button>
-                    </div>
-                    <p style="margin-top: 0.5rem;">Subtotal: ${formatPrice(subtotal)}</p>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    const subtotal = cart.reduce((sum, item) => {
-        const price = item.product.price;
-        return sum + (price * item.quantity);
-    }, 0);
-
-    const shipping = subtotal > 100 ? 0 : 5; // Free shipping over $100
+    const cartItemsHtml = cart.map(item => renderCartItem(item)).join('');
+    const subtotal = calculateSubtotal(cart);
+    const shipping = calculateShipping(subtotal);
     const total = subtotal + shipping;
 
     container.innerHTML = `
@@ -104,13 +77,48 @@ function renderCart() {
     `;
 }
 
+function renderCartItem(item) {
+    const product = item.product;
+    const effectivePrice = product.price;
+    const subtotal = effectivePrice * item.quantity;
+
+    return `
+        <div class="cart-item">
+            <div class="cart-item-image">
+                ${getProductImage(product)}
+            </div>
+            <div class="cart-item-details">
+                <h3 class="cart-item-title">${product.name}</h3>
+                <p class="cart-item-price">${formatPrice(effectivePrice)}</p>
+                <div class="cart-item-actions">
+                    <div class="quantity-controls">
+                        <button class="quantity-btn" onclick="updateQuantity('${product._id}', ${item.quantity - 1})">-</button>
+                        <span>${item.quantity}</span>
+                        <button class="quantity-btn" onclick="updateQuantity('${product._id}', ${item.quantity + 1})">+</button>
+                    </div>
+                    <button class="btn btn-danger" onclick="removeFromCart('${product._id}')">Remove</button>
+                </div>
+                <p style="margin-top: 0.5rem;">Subtotal: ${formatPrice(subtotal)}</p>
+            </div>
+        </div>
+    `;
+}
+
+function calculateSubtotal(items) {
+    return items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+}
+
+function calculateShipping(subtotal) {
+    return subtotal > 100 ? 0 : 5; //free shipping over $100
+}
+
 async function updateQuantity(productId, newQuantity) {
     if (newQuantity < 1) {
         await removeFromCart(productId);
         return;
     }
 
-    // Remove item and add with new quantity
+    //remove item and add with new quantity
     try {
         await api.removeFromCart(productId, authToken);
         await api.addToCart(productId, newQuantity, authToken);
@@ -140,8 +148,6 @@ async function removeFromCart(productId) {
 }
 
 async function clearCart() {
-    if (!confirm('Are you sure you want to clear your cart?')) return;
-
     try {
         const result = await api.clearCart(authToken);
 
@@ -164,51 +170,24 @@ async function checkout() {
         return;
     }
 
-    // Get user info for shipping address
+    //get user info for shipping address
     try {
         const userResult = await api.getMe(authToken);
         const user = userResult.data;
 
-        // Use default address or first address
-        let shippingAddress = user.addresses?.find(addr => addr.is_default) || user.addresses?.[0];
+        //use the default address or first address
+        const shippingAddress = user.addresses?.find(addr => addr.is_default) || user.addresses?.[0];
 
         if (!shippingAddress || !shippingAddress.phone) {
             showAlert('Please add a shipping address with phone number', 'error');
             return;
         }
 
-        // Prepare order data
-        const items = cart.map(item => ({
-            product: item.product._id,
-            quantity: item.quantity
-        }));
-
-        const subtotal = cart.reduce((sum, item) => {
-            const price = item.product.price;
-            return sum + (price * item.quantity);
-        }, 0);
-
-        const shipping = subtotal > 100 ? 0 : 5;
+        const subtotal = calculateSubtotal(cart);
+        const shipping = calculateShipping(subtotal);
         const total = subtotal + shipping;
 
-        const orderData = {
-            items,
-            shippingAddress: {
-                name: user.name,
-                street: shippingAddress.street,
-                city: shippingAddress.city,
-                country: shippingAddress.country,
-                phone: shippingAddress.phone
-            },
-            paymentMethod: document.getElementById('payment-method')?.value || 'credit-card',
-            pricing: {
-                subtotal,
-                shipping,
-                discount: 0,
-                total
-            }
-        };
-
+        const orderData = buildOrderData(user, shippingAddress, subtotal, shipping, total);
         const result = await api.createOrder(orderData, authToken);
 
         if (result.success) {
@@ -226,17 +205,26 @@ async function checkout() {
     }
 }
 
-async function updateCartCount() {
-    try {
-        const result = await api.getMe(authToken);
-        if (result.success && result.data.cart) {
-            const count = result.data.cart.reduce((sum, item) => sum + item.quantity, 0);
-            const badge = document.getElementById('cart-count');
-            if (badge) {
-                badge.textContent = count;
-            }
+function buildOrderData(user, shippingAddress, subtotal, shipping, total) {
+    return {
+        items: cart.map(item => ({
+            product: item.product._id,
+            quantity: item.quantity
+        })),
+        shippingAddress: {
+            name: user.name,
+            street: shippingAddress.street,
+            city: shippingAddress.city,
+            country: shippingAddress.country,
+            phone: shippingAddress.phone
+        },
+        paymentMethod: document.getElementById('payment-method')?.value || 'credit-card',
+        pricing: {
+            subtotal,
+            shipping,
+            discount: 0,
+            total
         }
-    } catch (error) {
-        console.error('Error updating cart count:', error);
-    }
+    };
 }
+

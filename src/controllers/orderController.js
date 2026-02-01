@@ -1,6 +1,36 @@
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
+const { sendError, sendSuccess, getPagination, buildPaginationMeta, handleValidationError } = require('./responseUtils');
+
+//create order item with product snapshot
+const createOrderItem = (product, quantity) => ({
+  product: product._id,
+  product_snapshot: {
+    name: product.name,
+    price: product.price,
+    image: product.images?.[0] || ''
+  },
+  quantity,
+  price: product.price,
+  subtotal: product.price * quantity
+});
+
+//update product stock
+const updateProductStock = async (productId, quantity, decrease = true) => {
+  const multiplier = decrease ? -1 : 1;
+  await Product.findByIdAndUpdate(productId, {
+    $inc: {
+      stock: quantity * multiplier,
+      sold_count: quantity * multiplier
+    }
+  });
+};
+
+//check if user can access order
+const canAccessOrder = (order, userId, userRole) => {
+  return order.user._id.toString() === userId.toString() || userRole === 'admin';
+};
 
 //desc - create new order
 //route - post /api/orders
@@ -10,17 +40,11 @@ exports.createOrder = async (req, res) => {
     const { items, shippingAddress, paymentMethod, pricing } = req.body;
 
     if (!items || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No order items provided'
-      });
+      return sendError(res, 400, 'No order items provided');
     }
 
     if (!shippingAddress || !paymentMethod || !pricing) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing order details'
-      });
+      return sendError(res, 400, 'Missing order details');
     }
 
     //validate and prepare order items with product snapshots
@@ -29,40 +53,15 @@ exports.createOrder = async (req, res) => {
       const product = await Product.findById(item.product);
 
       if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: `Product ${item.product} not found`
-        });
+        return sendError(res, 404, `Product ${item.product} not found`);
       }
 
       if (product.stock < item.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for ${product.name}`
-        });
+        return sendError(res, 400, `Insufficient stock for ${product.name}`);
       }
 
-      const price = product.price;
-
-      orderItems.push({
-        product: product._id,
-        product_snapshot: {
-          name: product.name,
-          price,
-          image: product.images?.[0] || ''
-        },
-        quantity: item.quantity,
-        price,
-        subtotal: price * item.quantity
-      });
-
-      //decrease stock and increase sold count using $inc
-      await Product.findByIdAndUpdate(product._id, {
-        $inc: {
-          stock: -item.quantity,
-          sold_count: item.quantity
-        }
-      });
+      orderItems.push(createOrderItem(product, item.quantity));
+      await updateProductStock(product._id, item.quantity, true);
     }
 
     //create order
@@ -79,17 +78,9 @@ exports.createOrder = async (req, res) => {
       .populate('user', 'name email')
       .populate('items.product', 'name images');
 
-    res.status(201).json({
-      success: true,
-      message: 'Order created successfully',
-      data: populatedOrder
-    });
+    return sendSuccess(res, populatedOrder, 'Order created successfully', null, 201);
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error creating order',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error creating order');
   }
 };
 
@@ -105,30 +96,19 @@ exports.getMyOrders = async (req, res) => {
       query.order_status = status;
     }
 
-    const skip = (page - 1) * limit;
+    const { page: pageNum, limit: limitNum, skip } = getPagination(page, limit);
 
     const orders = await Order.find(query)
       .populate('items.product', 'name images')
       .sort('-createdAt')
-      .limit(Number(limit))
+      .limit(limitNum)
       .skip(skip);
 
     const total = await Order.countDocuments(query);
 
-    res.status(200).json({
-      success: true,
-      count: orders.length,
-      total,
-      pages: Math.ceil(total / limit),
-      currentPage: Number(page),
-      data: orders
-    });
+    return sendSuccess(res, orders, null, buildPaginationMeta(orders, total, pageNum, limitNum));
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching orders',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching orders', error);
   }
 };
 
@@ -142,30 +122,17 @@ exports.getOrder = async (req, res) => {
       .populate('items.product', 'name images specifications');
 
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
+      return sendError(res, 404, 'Order not found');
     }
 
     //check if the user owns the order or is admin
-    if (order.user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to view this order'
-      });
+    if (!canAccessOrder(order, req.user._id, req.user.role)) {
+      return sendError(res, 403, 'Not authorized to view this order');
     }
 
-    res.status(200).json({
-      success: true,
-      data: order
-    });
+    return sendSuccess(res, order);
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching order',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching order', error);
   }
 };
 
@@ -181,31 +148,20 @@ exports.getAllOrders = async (req, res) => {
       query.order_status = status;
     }
 
-    const skip = (page - 1) * limit;
+    const { page: pageNum, limit: limitNum, skip } = getPagination(page, limit);
 
     const orders = await Order.find(query)
       .populate('user', 'name email')
       .populate('items.product', 'name')
       .sort('-createdAt')
-      .limit(Number(limit))
+      .limit(limitNum)
       .skip(skip);
 
     const total = await Order.countDocuments(query);
 
-    res.status(200).json({
-      success: true,
-      count: orders.length,
-      total,
-      pages: Math.ceil(total / limit),
-      currentPage: Number(page),
-      data: orders
-    });
+    return sendSuccess(res, orders, null, buildPaginationMeta(orders, total, pageNum, limitNum));
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching orders',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching orders', error);
   }
 };
 
@@ -242,23 +198,12 @@ exports.updateOrderStatus = async (req, res) => {
     ).populate('user', 'name email');
 
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
+      return sendError(res, 404, 'Order not found');
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Order status updated successfully',
-      data: order
-    });
+    return sendSuccess(res, order, 'Order status updated successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error updating order status',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error updating order status');
   }
 };
 
@@ -270,36 +215,22 @@ exports.cancelOrder = async (req, res) => {
     const order = await Order.findById(req.params.id);
 
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
+      return sendError(res, 404, 'Order not found');
     }
 
     //check authorization
     if (order.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to cancel this order'
-      });
+      return sendError(res, 403, 'Not authorized to cancel this order');
     }
 
     //can only cancel pending or processing orders
     if (!['pending', 'processing'].includes(order.order_status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot cancel order in current status'
-      });
+      return sendError(res, 400, 'Cannot cancel order in current status');
     }
 
     //restore product stock
     for (const item of order.items) {
-      await Product.findByIdAndUpdate(item.product, {
-        $inc: {
-          stock: item.quantity,
-          sold_count: -item.quantity
-        }
-      });
+      await updateProductStock(item.product, item.quantity, false);
     }
 
     //update order status
@@ -307,16 +238,8 @@ exports.cancelOrder = async (req, res) => {
     order.cancelled_at = new Date();
     await order.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Order cancelled successfully',
-      data: order
-    });
+    return sendSuccess(res, order, 'Order cancelled successfully');
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error cancelling order',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error cancelling order', error);
   }
 };

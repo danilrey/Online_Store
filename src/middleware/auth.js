@@ -1,57 +1,57 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { sendError } = require('../controllers/responseUtils');
+
+//extract token from authorization header
+const extractToken = (req) => {
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    return req.headers.authorization.split(' ')[1];
+  }
+  return null;
+};
+
+//verify token and get user
+const verifyTokenAndGetUser = async (token) => {
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  return await User.findById(decoded.id).select('-password');
+};
+
+//validate user is active
+const validateUser = (user) => {
+  if (!user) {
+    return { valid: false, message: 'User no longer exists' };
+  }
+
+  if (!user.is_active) {
+    return { valid: false, message: 'User account is deactivated' };
+  }
+
+  return { valid: true };
+};
 
 //verify jwt token
 exports.protect = async (req, res, next) => {
   try {
-    let token;
-
-    //check for token in authorization header
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
+    const token = extractToken(req);
 
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Not authorized to access this route. Please login.'
-      });
+      return sendError(res, 401, 'Not authorized to access this route. Please login.');
     }
 
     try {
-      //verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = await verifyTokenAndGetUser(token);
 
-      //get user from token
-      req.user = await User.findById(decoded.id).select('-password');
-
-      if (!req.user) {
-        return res.status(401).json({
-          success: false,
-          message: 'User no longer exists'
-        });
-      }
-
-      if (!req.user.is_active) {
-        return res.status(401).json({
-          success: false,
-          message: 'User account is deactivated'
-        });
+      const validation = validateUser(req.user);
+      if (!validation.valid) {
+        return sendError(res, 401, validation.message);
       }
 
       next();
     } catch (error) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid or expired token'
-      });
+      return sendError(res, 401, 'Invalid or expired token');
     }
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Authentication error',
-      error: error.message
-    });
+    return sendError(res, 500, 'Authentication error', error);
   }
 };
 
@@ -59,10 +59,7 @@ exports.protect = async (req, res, next) => {
 exports.restrictTo = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: 'You do not have permission to perform this action'
-      });
+      return sendError(res, 403, 'You do not have permission to perform this action');
     }
     next();
   };
@@ -71,16 +68,11 @@ exports.restrictTo = (...roles) => {
 //optional authentication (doesn't fail if no token)
 exports.optionalAuth = async (req, res, next) => {
   try {
-    let token;
-
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
+    const token = extractToken(req);
 
     if (token) {
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = await User.findById(decoded.id).select('-password');
+        req.user = await verifyTokenAndGetUser(token);
       } catch (error) {
         //token is invalid, but we don't fail the request
         req.user = null;

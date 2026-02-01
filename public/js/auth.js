@@ -80,8 +80,7 @@ function updateAuthUI() {
         //show user name
         if (userNameDisplay) {
             userNameDisplay.textContent = `${currentUser.name}`;
-            userNameDisplay.style.display = '';
-            userNameDisplay.style.removeProperty('display');
+            showElement(userNameDisplay);
         }
 
         //change auth link to logout (if present)
@@ -104,17 +103,19 @@ function updateAuthUI() {
 
         //show dashboard link (if present and not on dashboard page)
         if (dashboardLink && !dashboardLink.classList.contains('active')) {
-            dashboardLink.style.removeProperty('display');
+            showElement(dashboardLink);
         }
 
         if (adminLink) {
-            adminLink.style.display = currentUser.role === 'admin' ? '' : 'none';
+            if (currentUser.role === 'admin') {
+                showElement(adminLink);
+            } else {
+                hideElement(adminLink);
+            }
         }
     } else {
         //hide user name
-        if (userNameDisplay) {
-            userNameDisplay.style.display = 'none';
-        }
+        hideElement(userNameDisplay);
 
         //change auth link to login
         if (authLink) {
@@ -124,13 +125,9 @@ function updateAuthUI() {
         }
 
         //hide dashboard link
-        if (dashboardLink) {
-            dashboardLink.style.display = 'none';
-        }
+        hideElement(dashboardLink);
 
-        if (adminLink) {
-            adminLink.style.display = 'none';
-        }
+        hideElement(adminLink);
     }
 }
 

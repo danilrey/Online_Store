@@ -1,4 +1,4 @@
-// Product details page
+//product details page
 let currentProduct = null;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -54,6 +54,14 @@ function renderProductError(message) {
     if (container) {
         container.innerHTML = `<p class="alert alert-error">${message}</p>`;
     }
+}
+
+function getReviewFormValues() {
+    return {
+        rating: Number(document.getElementById('review-rating')?.value),
+        title: document.getElementById('review-title')?.value.trim(),
+        comment: document.getElementById('review-comment')?.value.trim()
+    };
 }
 
 async function loadReviews(productId) {
@@ -122,9 +130,7 @@ function setupReviewForm(productId) {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        const rating = Number(document.getElementById('review-rating')?.value);
-        const title = document.getElementById('review-title')?.value.trim();
-        const comment = document.getElementById('review-comment')?.value.trim();
+        const { rating, title, comment } = getReviewFormValues();
 
         if (!rating || !title || !comment) {
             showAlert('Please fill all review fields', 'error');
@@ -187,42 +193,3 @@ async function checkReviewEligibility(productId) {
     }
 }
 
-async function addToCart(productId) {
-    if (!isAuthenticated()) {
-        showAlert('Please login to add items to cart', 'error');
-        setTimeout(() => {
-            window.location.href = '/login.html';
-        }, 1500);
-        return;
-    }
-
-    try {
-        const result = await api.addToCart(productId, 1, authToken);
-        if (result.success) {
-            showAlert('Product added to cart!', 'success');
-            updateCartCount();
-        } else {
-            showAlert(result.message || 'Error adding to cart', 'error');
-        }
-    } catch (error) {
-        console.error('Error adding to cart:', error);
-        showAlert('Error adding to cart', 'error');
-    }
-}
-
-async function updateCartCount() {
-    if (!isAuthenticated()) return;
-
-    try {
-        const result = await api.getMe(authToken);
-        if (result.success && result.data.cart) {
-            const count = result.data.cart.reduce((sum, item) => sum + item.quantity, 0);
-            const badge = document.getElementById('cart-count');
-            if (badge) {
-                badge.textContent = count;
-            }
-        }
-    } catch (error) {
-        console.error('Error updating cart count:', error);
-    }
-}

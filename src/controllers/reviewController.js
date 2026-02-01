@@ -1,6 +1,17 @@
 const Review = require('../models/Review');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
+const { sendError, sendSuccess, getPagination, buildPaginationMeta, handleValidationError } = require('./responseUtils');
+
+//check if user owns the review
+const isReviewOwner = (review, userId) => {
+  return review.user.toString() === userId.toString();
+};
+
+//check if user can delete review (owner or admin)
+const canDeleteReview = (review, userId, userRole) => {
+  return isReviewOwner(review, userId) || userRole === 'admin';
+};
 
 //desc - get reviews for a product
 //route - get /api/products/:productId/reviews
@@ -10,30 +21,19 @@ exports.getProductReviews = async (req, res) => {
     const { productId } = req.params;
     const { sort = '-createdAt', page = 1, limit = 10 } = req.query;
 
-    const skip = (page - 1) * limit;
+    const { page: pageNum, limit: limitNum, skip } = getPagination(page, limit);
 
     const reviews = await Review.find({ product: productId })
       .populate('user', 'name')
       .sort(sort)
-      .limit(Number(limit))
+      .limit(limitNum)
       .skip(skip);
 
     const total = await Review.countDocuments({ product: productId });
 
-    res.status(200).json({
-      success: true,
-      count: reviews.length,
-      total,
-      pages: Math.ceil(total / limit),
-      currentPage: Number(page),
-      data: reviews
-    });
+    return sendSuccess(res, reviews, null, buildPaginationMeta(reviews, total, pageNum, limitNum));
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching reviews',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error fetching reviews', error);
   }
 };
 
@@ -47,10 +47,7 @@ exports.createReview = async (req, res) => {
     //check if product exists
     const productExists = await Product.findById(product);
     if (!productExists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return sendError(res, 404, 'Product not found');
     }
 
     //allow reviews only for delivered orders
@@ -61,10 +58,7 @@ exports.createReview = async (req, res) => {
     });
 
     if (!deliveredOrder) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only customers with delivered orders can leave a review'
-      });
+      return sendError(res, 403, 'Only customers with delivered orders can leave a review');
     }
 
     //check if user already reviewed this product
@@ -74,10 +68,7 @@ exports.createReview = async (req, res) => {
     });
 
     if (existingReview) {
-      return res.status(400).json({
-        success: false,
-        message: 'You have already reviewed this product'
-      });
+      return sendError(res, 400, 'You have already reviewed this product');
     }
 
     //create review
@@ -93,17 +84,9 @@ exports.createReview = async (req, res) => {
       .populate('user', 'name')
       .populate('product', 'name');
 
-    res.status(201).json({
-      success: true,
-      message: 'Review created successfully',
-      data: populatedReview
-    });
+    return sendSuccess(res, populatedReview, 'Review created successfully', null, 201);
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error creating review',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error creating review');
   }
 };
 
@@ -115,18 +98,12 @@ exports.updateReview = async (req, res) => {
     const review = await Review.findById(req.params.id);
 
     if (!review) {
-      return res.status(404).json({
-        success: false,
-        message: 'Review not found'
-      });
+      return sendError(res, 404, 'Review not found');
     }
 
     //check if the user owns the review
-    if (review.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update this review'
-      });
+    if (!isReviewOwner(review, req.user._id)) {
+      return sendError(res, 403, 'Not authorized to update this review');
     }
 
     //update with $set
@@ -136,17 +113,9 @@ exports.updateReview = async (req, res) => {
       { new: true, runValidators: true }
     ).populate('user', 'name');
 
-    res.status(200).json({
-      success: true,
-      message: 'Review updated successfully',
-      data: updatedReview
-    });
+    return sendSuccess(res, updatedReview, 'Review updated successfully');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error updating review',
-      error: error.message
-    });
+    return handleValidationError(res, error, 'Error updating review');
   }
 };
 
@@ -158,18 +127,12 @@ exports.markHelpful = async (req, res) => {
     const review = await Review.findById(req.params.id);
 
     if (!review) {
-      return res.status(404).json({
-        success: false,
-        message: 'Review not found'
-      });
+      return sendError(res, 404, 'Review not found');
     }
 
     //check if user already marked this review as helpful
     if (review.helpful.users.includes(req.user._id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'You already marked this review as helpful'
-      });
+      return sendError(res, 400, 'You already marked this review as helpful');
     }
 
     //use $push to add user and $inc to increment count
@@ -182,17 +145,9 @@ exports.markHelpful = async (req, res) => {
       { new: true }
     ).populate('user', 'name');
 
-    res.status(200).json({
-      success: true,
-      message: 'Review marked as helpful',
-      data: updatedReview
-    });
+    return sendSuccess(res, updatedReview, 'Review marked as helpful');
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error marking review as helpful',
-      error: error.message
-    });
+    return sendError(res, 400, 'Error marking review as helpful', error);
   }
 };
 
@@ -204,32 +159,18 @@ exports.deleteReview = async (req, res) => {
     const review = await Review.findById(req.params.id);
 
     if (!review) {
-      return res.status(404).json({
-        success: false,
-        message: 'Review not found'
-      });
+      return sendError(res, 404, 'Review not found');
     }
 
     //check if user owns the review or is admin
-    if (review.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to delete this review'
-      });
+    if (!canDeleteReview(review, req.user._id, req.user.role)) {
+      return sendError(res, 403, 'Not authorized to delete this review');
     }
 
     await review.deleteOne();
 
-    res.status(200).json({
-      success: true,
-      message: 'Review deleted successfully',
-      data: {}
-    });
+    return sendSuccess(res, {}, 'Review deleted successfully');
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting review',
-      error: error.message
-    });
+    return sendError(res, 500, 'Error deleting review', error);
   }
 };

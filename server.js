@@ -3,6 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const { sendError } = require('./src/controllers/responseUtils');
 
 //import routes
 const authRoutes = require('./src/routes/authRoutes');
@@ -52,18 +53,12 @@ app.get('/admin.html', sendView('admin.html'));
 //error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'Internal Server Error'
-  });
+  return sendError(res, err.status || 500, err.message || 'Internal Server Error', err);
 });
 
 //404 handler
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
+  return sendError(res, 404, 'Route not found');
 });
 
 const PORT = process.env.PORT;

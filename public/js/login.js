@@ -43,30 +43,17 @@ async function handleLogin(e) {
 
     //disable submit button to prevent double submission
     const submitBtn = e.target.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Logging in...';
+    const originalText = setSubmitState(submitBtn, true, 'Logging in...');
 
     try {
         const result = await api.login({ email, password });
-
-        localStorage.setItem('authToken', result.data.token);
-        localStorage.setItem('currentUser', JSON.stringify(result.data.user));
-        authToken = result.data.token;
-        currentUser = result.data.user;
-
-        showAlert('Login successful! Redirecting...', 'success');
-
-        setTimeout(() => {
-            window.location.href = result.data.user.role === 'admin' ? '/admin.html' : '/dashboard.html';
-        }, 1000);
+        setAuthAndRedirect(result);
     } catch (error) {
         console.error('Login error:', error);
         showAlert(error.message || 'Login failed. Please check your credentials.', 'error');
 
         //re-enable submit button
-        submitBtn.disabled = false;
-        submitBtn.textContent = originalText;
+        setSubmitState(submitBtn, false, originalText);
     }
 }
 
@@ -96,31 +83,41 @@ async function handleRegister(e) {
 
     //disable submit button to prevent double submission
     const submitBtn = e.target.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Registering...';
+    const originalText = setSubmitState(submitBtn, true, 'Registering...');
 
     try {
         const result = await api.register({ name, email, password, phone });
-
-        localStorage.setItem('authToken', result.data.token);
-        localStorage.setItem('currentUser', JSON.stringify(result.data.user));
-        authToken = result.data.token;
-        currentUser = result.data.user;
-
-        showAlert('Registration successful! Redirecting...', 'success');
-
-        setTimeout(() => {
-            window.location.href = result.data.user.role === 'admin' ? '/admin.html' : '/dashboard.html';
-        }, 1000);
+        setAuthAndRedirect(result);
     } catch (error) {
         console.error('Registration error:', error);
         showAlert(error.message || 'Registration failed. Please try again.', 'error');
 
         //re-enable submit button
-        submitBtn.disabled = false;
-        submitBtn.textContent = originalText;
+        setSubmitState(submitBtn, false, originalText);
     }
+}
+
+function setAuthAndRedirect(result) {
+    localStorage.setItem('authToken', result.data.token);
+    localStorage.setItem('currentUser', JSON.stringify(result.data.user));
+    authToken = result.data.token;
+    currentUser = result.data.user;
+
+    showAlert('Login successful! Redirecting...', 'success');
+
+    setTimeout(() => {
+        window.location.href = result.data.user.role === 'admin' ? '/admin.html' : '/dashboard.html';
+    }, 1000);
+}
+
+function setSubmitState(button, disabled, label) {
+    if (!button) return '';
+    const previous = button.textContent;
+    button.disabled = disabled;
+    if (label) {
+        button.textContent = label;
+    }
+    return previous;
 }
 
 function showLogin() {

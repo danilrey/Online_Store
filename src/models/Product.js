@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { constraints } = require('./modelUtils');
 
 //compatible models schema
 const compatibleModelSchema = new mongoose.Schema({
@@ -17,7 +18,7 @@ const productSchema = new mongoose.Schema({
   description: {
     type: String,
     required: [true, 'Product description is required'],
-    minlength: [10, 'Description must be at least 10 characters']
+    minlength: [constraints.minDescription, `Description must be at least ${constraints.minDescription} characters`]
   },
   material: {
     type: String,
