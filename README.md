@@ -1,6 +1,7 @@
 # Online Cases Store - Advanced NoSQL Database Project
 
-**Authors:** ...
+**Authors:**
+Bussygin Danila SE-2414, Yessen Zhumagali SE-2419
 
 ---
 
