@@ -119,38 +119,6 @@ exports.updateReview = async (req, res) => {
   }
 };
 
-//desc - mark review as helpful
-//route - patch /api/reviews/:id/helpful
-//access - private
-exports.markHelpful = async (req, res) => {
-  try {
-    const review = await Review.findById(req.params.id);
-
-    if (!review) {
-      return sendError(res, 404, 'Review not found');
-    }
-
-    //check if user already marked this review as helpful
-    if (review.helpful.users.includes(req.user._id)) {
-      return sendError(res, 400, 'You already marked this review as helpful');
-    }
-
-    //use $push to add user and $inc to increment count
-    const updatedReview = await Review.findByIdAndUpdate(
-      req.params.id,
-      {
-        $push: { 'helpful.users': req.user._id },
-        $inc: { 'helpful.count': 1 }
-      },
-      { new: true }
-    ).populate('user', 'name');
-
-    return sendSuccess(res, updatedReview, 'Review marked as helpful');
-  } catch (error) {
-    return sendError(res, 400, 'Error marking review as helpful', error);
-  }
-};
-
 //desc - delete a review
 //route - delete /api/reviews/:id
 //access - private
